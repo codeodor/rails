@@ -1,3 +1,7 @@
+*   Fix route helper to work with string params
+
+    *Sammy Larbi*
+
 *   Stop converting empty arrays in `params` to `nil`
 
     This behaviour was introduced in response to CVE-2012-2660, CVE-2012-2694
