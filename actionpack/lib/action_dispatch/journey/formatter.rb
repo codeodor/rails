@@ -62,6 +62,51 @@ module ActionDispatch
         raise ActionController::UrlGenerationError, message
       end
       
+      def generate_with_deprecate_transform_keys(name, options, path_parameters, parameterize = nil)
+        new_options = {}
+        options = options.transform_keys do |key|
+          result = key.to_sym
+          unless result.equal?(key)
+            ActiveSupport::Deprecation.warn(<<-MSG.squish)
+              #{key.class} keys passed into view helpers are deprecated, use Symbol keys instead. 
+              #{key.class} keys will quit working in Rails 5.0.
+            MSG
+          end
+          result
+        end
+
+        constraints = path_parameters.merge(options)
+        missing_keys = []
+
+        match_route(name, constraints) do |route|
+          parameterized_parts = extract_parameterized_parts(route, options, path_parameters, parameterize)
+
+          # Skip this route unless a name has been provided or it is a
+          # standard Rails route since we can't determine whether an options
+          # hash passed to url_for matches a Rack application or a redirect.
+          next unless name || route.dispatcher?
+
+          missing_keys = missing_keys(route, parameterized_parts)
+          next unless missing_keys.empty?
+          params = options.dup.delete_if do |key, _|
+            parameterized_parts.key?(key) || route.defaults.key?(key)
+          end
+
+          defaults       = route.defaults
+          required_parts = route.required_parts
+          parameterized_parts.delete_if do |key, value|
+            value.to_s == defaults[key].to_s && !required_parts.include?(key)
+          end
+
+          return [route.format(parameterized_parts), params]
+        end
+
+        message = "No route matches #{Hash[constraints.sort].inspect}"
+        message << " missing required keys: #{missing_keys.sort.inspect}" unless missing_keys.empty?
+
+        raise ActionController::UrlGenerationError, message
+      end
+      
       def generate_with_deprecate_each(name, options, path_parameters, parameterize = nil)
         new_options = {}
         options.each_key do |key|

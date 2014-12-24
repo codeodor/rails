@@ -37,6 +37,7 @@ module TestUrlGeneration
         x.report('deprecated with each'){ bar_path("id" => 1, deprecate: "deprecate_each") }
         x.report('deprecated with original'){ bar_path("id" => 1, deprecate: "original") rescue nil }
         x.report('deprecated with symbolize'){ bar_path("id" => 1, deprecate: "symbolize") }
+        x.report('deprecated with transform_keys'){ bar_path("id" => 1, deprecate: "deprecate_transform_keys") }
         x.compare!
       end
       
@@ -45,6 +46,7 @@ module TestUrlGeneration
         x.report('not deprecated with each'){ bar_path(id: 1, deprecate: "deprecate_each") }
         x.report('not deprecated with original'){ bar_path(id: 1, deprecate: "original") }
         x.report('not deprecated with symbolize'){ bar_path(id: 1, deprecate: "symbolize") }
+        x.report('not deprecated with transform_keys'){ bar_path(id: 1, deprecate: "deprecate_transform_keys") }
         x.compare!
       end
     end
