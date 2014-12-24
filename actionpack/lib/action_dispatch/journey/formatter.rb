@@ -14,6 +14,103 @@ module ActionDispatch
       end
 
       def generate(name, options, path_parameters, parameterize = nil)
+        if options[:deprecate]
+          send("generate_with_#{options[:deprecate]}", name, options, path_parameters, parameterize)
+        else
+           generate_with_original(name, options, path_parameters, parameterize)
+        end
+      end
+      
+      def generate_with_deprecate_any(name, options, path_parameters, parameterize = nil)
+        if options.keys.any?{|k| !k.is_a? Symbol }
+          bad_keys = options.keys.select{|k| !k.is_a? Symbol }
+          ActiveSupport::Deprecation.warn(<<-MSG.squish)
+             Keys passed into view helpers which are not symbols are deprecated, use Symbol keys instead. 
+             You used keys the following non-Symbol keys: #{bad_keys.join(', ')}, which will quit working in Rails 5.0.
+          MSG
+          options = options.symbolize_keys  
+        end
+        constraints = path_parameters.merge(options)
+        missing_keys = []
+
+        match_route(name, constraints) do |route|
+          parameterized_parts = extract_parameterized_parts(route, options, path_parameters, parameterize)
+
+          # Skip this route unless a name has been provided or it is a
+          # standard Rails route since we can't determine whether an options
+          # hash passed to url_for matches a Rack application or a redirect.
+          next unless name || route.dispatcher?
+
+          missing_keys = missing_keys(route, parameterized_parts)
+          next unless missing_keys.empty?
+          params = options.dup.delete_if do |key, _|
+            parameterized_parts.key?(key) || route.defaults.key?(key)
+          end
+
+          defaults       = route.defaults
+          required_parts = route.required_parts
+          parameterized_parts.delete_if do |key, value|
+            value.to_s == defaults[key].to_s && !required_parts.include?(key)
+          end
+
+          return [route.format(parameterized_parts), params]
+        end
+
+        message = "No route matches #{Hash[constraints.sort].inspect}"
+        message << " missing required keys: #{missing_keys.sort.inspect}" unless missing_keys.empty?
+
+        raise ActionController::UrlGenerationError, message
+      end
+      
+      def generate_with_deprecate_each(name, options, path_parameters, parameterize = nil)
+        new_options = {}
+        options.each_key do |key|
+          case key
+          when Symbol
+            new_options[key] = options[key]
+          else
+            new_options[key.to_sym] = options[key]
+            ActiveSupport::Deprecation.warn(<<-MSG.squish)
+              #{key.class} keys passed into view helpers are deprecated, use Symbol keys instead. 
+              #{key.class} keys will quit working in Rails 5.0.
+            MSG
+          end
+        end
+        options = new_options
+        
+        constraints = path_parameters.merge(options)
+        missing_keys = []
+
+        match_route(name, constraints) do |route|
+          parameterized_parts = extract_parameterized_parts(route, options, path_parameters, parameterize)
+
+          # Skip this route unless a name has been provided or it is a
+          # standard Rails route since we can't determine whether an options
+          # hash passed to url_for matches a Rack application or a redirect.
+          next unless name || route.dispatcher?
+
+          missing_keys = missing_keys(route, parameterized_parts)
+          next unless missing_keys.empty?
+          params = options.dup.delete_if do |key, _|
+            parameterized_parts.key?(key) || route.defaults.key?(key)
+          end
+
+          defaults       = route.defaults
+          required_parts = route.required_parts
+          parameterized_parts.delete_if do |key, value|
+            value.to_s == defaults[key].to_s && !required_parts.include?(key)
+          end
+
+          return [route.format(parameterized_parts), params]
+        end
+
+        message = "No route matches #{Hash[constraints.sort].inspect}"
+        message << " missing required keys: #{missing_keys.sort.inspect}" unless missing_keys.empty?
+
+        raise ActionController::UrlGenerationError, message
+      end
+      
+      def generate_with_symbolize(name, options, path_parameters, parameterize = nil)
         options = options.symbolize_keys
         constraints = path_parameters.merge(options)
         missing_keys = []
@@ -46,6 +143,39 @@ module ActionDispatch
 
         raise ActionController::UrlGenerationError, message
       end
+      
+      def generate_with_original(name, options, path_parameters, parameterize = nil)
+        constraints = path_parameters.merge(options)
+        missing_keys = []
+
+        match_route(name, constraints) do |route|
+          parameterized_parts = extract_parameterized_parts(route, options, path_parameters, parameterize)
+
+          # Skip this route unless a name has been provided or it is a
+          # standard Rails route since we can't determine whether an options
+          # hash passed to url_for matches a Rack application or a redirect.
+          next unless name || route.dispatcher?
+
+          missing_keys = missing_keys(route, parameterized_parts)
+          next unless missing_keys.empty?
+          params = options.dup.delete_if do |key, _|
+            parameterized_parts.key?(key) || route.defaults.key?(key)
+          end
+
+          defaults       = route.defaults
+          required_parts = route.required_parts
+          parameterized_parts.delete_if do |key, value|
+            value.to_s == defaults[key].to_s && !required_parts.include?(key)
+          end
+
+          return [route.format(parameterized_parts), params]
+        end
+
+        message = "No route matches #{Hash[constraints.sort].inspect}"
+        message << " missing required keys: #{missing_keys.sort.inspect}" unless missing_keys.empty?
+
+        raise ActionController::UrlGenerationError, message
+      end  
 
       def clear
         @cache = nil
